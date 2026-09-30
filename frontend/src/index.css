@@ -1,0 +1,59 @@
+:root {
+  --page-bg: #f3f7fb;
+  --panel-bg: #ffffff;
+  --sidebar-bg: #0f172a;
+  --sidebar-text: #cbd5e1;
+  --sidebar-muted: #94a3b8;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --text-muted: #475569;
+  --primary-bg: #2563eb;
+  --primary-soft: #dbeafe;
+  --brand-ink: #0f172a;
+  --shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.04);
+  font-family: Inter, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text);
+  background: var(--page-bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page-bg);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--page-bg);
+  color: var(--text);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+code,
+pre {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
