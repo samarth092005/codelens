@@ -240,3 +240,68 @@ def test_real_sample_repository_graph_and_navigation(db_session: Session, tmp_pa
     )
     assert disconnected_paths.paths_count == 0
     assert disconnected_paths.paths == []
+
+
+def test_real_sample_repository_change_impact_intelligence(db_session: Session, tmp_path: Path):
+    """Sprint 4: Demonstrate deterministic multi-hop change impact intelligence on a real repository."""
+    from app.services.code_intelligence.impact_service import impact_analysis_service
+
+    # Ingest the sample repo
+    test_real_sample_repository_validation(db_session, tmp_path)
+
+    repo = db_session.query(Repository).filter_by(name="sample-project").first()
+    assert repo is not None
+    version = repo.versions[0]
+
+    all_symbols = [s for f in version.files for s in f.symbols]
+    symbols_by_name = {s.name: s for s in all_symbols}
+
+    exec_query_sym = symbols_by_name["execute_query"]
+    calc_tax_sym = symbols_by_name["calculate_tax"]
+    proc_inv_sym = symbols_by_name["process_invoice"]
+    format_amt_sym = symbols_by_name["formatAmount"]
+
+    # Analyze impact when `execute_query` changes
+    impact = impact_analysis_service.analyze_symbol_impact(
+        db_session,
+        symbol_id=exec_query_sym.id,
+        max_depth=10,
+    )
+
+    # 1. Verification of changed symbol
+    assert impact.changed_symbol.id == exec_query_sym.id
+    assert impact.changed_symbol.name == "execute_query"
+
+    # 2. Multi-hop callers verified:
+    # Direct caller: calculate_tax (1 hop)
+    # Transitive caller: process_invoice (2 hops)
+    aff_by_name = {s.name: s for s in impact.affected_symbols}
+    assert "calculate_tax" in aff_by_name
+    assert "process_invoice" in aff_by_name
+
+    tax_impact = aff_by_name["calculate_tax"]
+    assert tax_impact.impact_type == "DIRECT"
+    assert tax_impact.hops == 1
+    assert tax_impact.file_path == "app/tax.py"
+    assert "calculate_tax" in tax_impact.evidence.call_chain
+
+    inv_impact = aff_by_name["process_invoice"]
+    assert inv_impact.impact_type == "TRANSITIVE"
+    assert inv_impact.hops == 2
+    assert inv_impact.file_path == "app/invoice.py"
+    assert inv_impact.evidence.hops == 2
+    assert "process_invoice" in inv_impact.evidence.call_chain
+
+    # 3. Affected files verified
+    affected_file_paths = [f.file_path for f in impact.affected_files]
+    assert "app/tax.py" in affected_file_paths
+    assert "app/invoice.py" in affected_file_paths
+    assert "src/utils.ts" not in affected_file_paths
+
+    # 4. Database impact detected
+    db_ops = [d.name for d in impact.affected_databases]
+    assert "execute_query" in db_ops
+
+    # 5. Disconnected components (TypeScript payment utils) never affected
+    assert "formatAmount" not in aff_by_name
+    assert "processPayment" not in aff_by_name

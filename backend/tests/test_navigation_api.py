@@ -139,3 +139,31 @@ def test_repository_graph_and_architecture_api(client: TestClient, db_session: S
     # 3. 404 on missing repository
     assert client.get("/api/v1/repositories/99999/graph").status_code == 404
     assert client.get("/api/v1/repositories/99999/architecture").status_code == 404
+
+
+def test_symbol_impact_api_endpoint(client: TestClient, db_session: Session):
+    data = _create_sample_graph(db_session)
+    s_repo_id = data["symbols"]["repo"].id  # fetch_record is called by s_service (run_service)
+    s_main_id = data["symbols"]["main"].id  # main_func calls run_service
+
+    # 1. GET /api/v1/symbols/{id}/impact
+    res = client.get(f"/api/v1/symbols/{s_repo_id}/impact")
+    assert res.status_code == 200
+    impact = res.json()
+    assert impact["changed_symbol"]["id"] == s_repo_id
+    assert impact["total_affected_symbols"] >= 1
+    aff_names = [s["name"] for s in impact["affected_symbols"]]
+    assert "run_service" in aff_names
+
+    # 2. max_depth parameter validation:
+    # 0 is invalid (ge=1)
+    res_invalid = client.get(f"/api/v1/symbols/{s_repo_id}/impact?max_depth=0")
+    assert res_invalid.status_code == 422
+
+    # 100 is invalid (le=50)
+    res_large = client.get(f"/api/v1/symbols/{s_repo_id}/impact?max_depth=100")
+    assert res_large.status_code == 422
+
+    # 3. 404 on nonexistent symbol
+    res_404 = client.get("/api/v1/symbols/999999/impact")
+    assert res_404.status_code == 404

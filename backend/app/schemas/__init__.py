@@ -26,6 +26,13 @@ from app.schemas.code_intelligence import (
     SymbolPathsResponse,
     ArchitectureModule,
     ArchitectureResponse,
+    ImpactEvidence,
+    AffectedSymbolItem,
+    AffectedFileItem,
+    TestImpactItem,
+    ApiImpactItem,
+    DatabaseImpactItem,
+    ImpactAnalysisResponse,
 )
 
 __all__ = [
@@ -57,4 +64,11 @@ __all__ = [
     "SymbolPathsResponse",
     "ArchitectureModule",
     "ArchitectureResponse",
+    "ImpactEvidence",
+    "AffectedSymbolItem",
+    "AffectedFileItem",
+    "TestImpactItem",
+    "ApiImpactItem",
+    "DatabaseImpactItem",
+    "ImpactAnalysisResponse",
 ]

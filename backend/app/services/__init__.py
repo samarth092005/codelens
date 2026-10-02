@@ -34,6 +34,10 @@ from app.services.code_intelligence.graph_service import (
     GraphService,
     graph_service,
 )
+from app.services.code_intelligence.impact_service import (
+    ImpactAnalysisService,
+    impact_analysis_service,
+)
 
 __all__ = [
     "RepositoryService",
@@ -54,4 +58,6 @@ __all__ = [
     "dependency_resolver",
     "GraphService",
     "graph_service",
+    "ImpactAnalysisService",
+    "impact_analysis_service",
 ]

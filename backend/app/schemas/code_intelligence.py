@@ -240,3 +240,89 @@ class ArchitectureResponse(BaseModel):
     total_symbols: int
     total_dependencies: int
     languages: dict[str, int]
+
+
+# --- Sprint 4: Change Impact Intelligence Schemas ---
+
+
+class ImpactEvidence(BaseModel):
+    call_chain: list[str]  # e.g. ["calculate_tax", "InvoiceService.process_invoice", "test_process"]
+    hops: int
+    call_line_numbers: list[int] = Field(default_factory=list)
+    reason: str
+
+
+class AffectedSymbolItem(BaseModel):
+    symbol_id: int
+    name: str
+    qualified_name: str
+    symbol_type: str
+    file_id: int
+    file_path: str
+    line_start: int
+    line_end: int
+    impact_type: str  # "DIRECT" or "TRANSITIVE"
+    hops: int
+    relationship_type: str = "CALL"
+    resolution_status: str = "RESOLVED"
+    evidence: ImpactEvidence
+
+
+class AffectedFileItem(BaseModel):
+    file_id: int
+    file_path: str
+    language: str
+    impact_type: str  # "DIRECT" or "TRANSITIVE"
+    min_hops: int
+    affected_symbol_count: int
+    affected_symbol_ids: list[int]
+
+
+class TestImpactItem(BaseModel):
+    symbol_id: int
+    name: str
+    qualified_name: str
+    file_id: int
+    file_path: str
+    impact_type: str  # "DIRECT" or "TRANSITIVE"
+    hops: int
+    evidence: ImpactEvidence
+
+
+class ApiImpactItem(BaseModel):
+    symbol_id: int
+    name: str
+    qualified_name: str
+    file_id: int
+    file_path: str
+    impact_type: str  # "DIRECT" or "TRANSITIVE"
+    hops: int
+    evidence: ImpactEvidence
+
+
+class DatabaseImpactItem(BaseModel):
+    symbol_id: int
+    name: str
+    qualified_name: str
+    file_id: int
+    file_path: str
+    operation: str  # "DATABASE_OPERATION"
+    impact_type: str  # "DIRECT" or "TRANSITIVE"
+    hops: int
+    evidence: ImpactEvidence
+
+
+class ImpactAnalysisResponse(BaseModel):
+    changed_symbol: SymbolDetailResponse
+    repository_id: int
+    repository_version_id: int
+    max_depth: int
+    total_affected_symbols: int
+    total_affected_files: int
+    direct_callers_count: int
+    transitive_callers_count: int
+    affected_symbols: list[AffectedSymbolItem]
+    affected_files: list[AffectedFileItem]
+    affected_tests: list[TestImpactItem]
+    affected_apis: list[ApiImpactItem]
+    affected_databases: list[DatabaseImpactItem]

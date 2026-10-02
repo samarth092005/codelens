@@ -5,6 +5,7 @@ from app.core.database import get_db
 from app.schemas.code_intelligence import (
     CalleeResponse,
     CallerResponse,
+    ImpactAnalysisResponse,
     SymbolDependencyItem,
     SymbolDetailResponse,
     SymbolPathsResponse,
@@ -12,6 +13,10 @@ from app.schemas.code_intelligence import (
 from app.services.code_intelligence.graph_service import (
     GraphService,
     graph_service,
+)
+from app.services.code_intelligence.impact_service import (
+    ImpactAnalysisService,
+    impact_analysis_service,
 )
 
 router = APIRouter(prefix="/symbols", tags=["symbols"])
@@ -97,5 +102,24 @@ def get_symbol_paths(
         db,
         source_symbol_id=symbol_id,
         target_symbol_id=resolved_target,
+        max_depth=max_depth,
+    )
+
+
+@router.get(
+    "/{symbol_id}/impact",
+    response_model=ImpactAnalysisResponse,
+    summary="Analyze change impact for a symbol",
+)
+def get_symbol_impact(
+    symbol_id: int,
+    max_depth: int = Query(default=10, ge=1, le=50, description="Maximum number of call hops/edges"),
+    db: Session = Depends(get_db),
+    impact_svc: ImpactAnalysisService = Depends(lambda: impact_analysis_service),
+):
+    """Deterministically analyze what code (symbols, files, tests, APIs, databases) may be affected if this symbol changes."""
+    return impact_svc.analyze_symbol_impact(
+        db,
+        symbol_id=symbol_id,
         max_depth=max_depth,
     )

@@ -28,6 +28,10 @@ from app.services.code_intelligence.resolver import (
     DependencyResolver,
     dependency_resolver,
 )
+from app.services.code_intelligence.impact_service import (
+    ImpactAnalysisService,
+    impact_analysis_service,
+)
 
 __all__ = [
     "RepositoryAnalysisService",
@@ -44,4 +48,6 @@ __all__ = [
     "git_service",
     "DependencyResolver",
     "dependency_resolver",
+    "ImpactAnalysisService",
+    "impact_analysis_service",
 ]
