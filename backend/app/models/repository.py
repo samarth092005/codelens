@@ -6,6 +6,7 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.user import User
+    from app.models.repository_version import RepositoryVersion
 
 
 class Repository(Base):
@@ -37,3 +38,8 @@ class Repository(Base):
     )
 
     owner: Mapped["User | None"] = relationship("User", back_populates="repositories")
+    versions: Mapped[list["RepositoryVersion"]] = relationship(
+        "RepositoryVersion",
+        back_populates="repository",
+        cascade="all, delete-orphan",
+    )

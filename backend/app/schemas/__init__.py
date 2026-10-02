@@ -5,6 +5,14 @@ from app.schemas.repository import (
     RepositoryUpdate,
     RepositoryResponse,
 )
+from app.schemas.code_intelligence import (
+    AnalysisTriggerRequest,
+    AnalysisJobResponse,
+    RepositoryVersionResponse,
+    FileResponse,
+    SymbolResponse,
+    DependencyResponse,
+)
 
 __all__ = [
     "UserBase",
@@ -15,4 +23,10 @@ __all__ = [
     "RepositoryCreate",
     "RepositoryUpdate",
     "RepositoryResponse",
+    "AnalysisTriggerRequest",
+    "AnalysisJobResponse",
+    "RepositoryVersionResponse",
+    "FileResponse",
+    "SymbolResponse",
+    "DependencyResponse",
 ]

@@ -1,3 +1,7 @@
+from app.repositories.code_intelligence_repository import (
+    CodeIntelligenceRepository,
+    code_intel_repository,
+)
 from app.repositories.repository_repository import (
     RepositoryRepository,
     repository_repository,
@@ -12,4 +16,6 @@ __all__ = [
     "repository_repository",
     "UserRepository",
     "user_repository",
+    "CodeIntelligenceRepository",
+    "code_intel_repository",
 ]
