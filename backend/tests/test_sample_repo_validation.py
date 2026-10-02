@@ -164,3 +164,79 @@ def test_real_sample_repository_validation(db_session: Session, tmp_path: Path):
     payment_sym_id = symbols_by_qname["processPayment"].id
     format_sym_id = symbols_by_qname["formatAmount"].id
     assert (payment_sym_id, format_sym_id) in call_pairs, "processPayment must call formatAmount"
+
+
+def test_real_sample_repository_graph_and_navigation(db_session: Session, tmp_path: Path):
+    """Sprint 3 Phase 11: Validate Graph and Navigation on real ingested repository."""
+    from app.services.code_intelligence.graph_service import graph_service
+
+    # Ingest the real sample repo
+    test_real_sample_repository_validation(db_session, tmp_path)
+
+    repo = db_session.query(Repository).filter_by(name="sample-project").first()
+    assert repo is not None
+    version = repo.versions[0]
+
+    # 1. Graph generation succeeds
+    graph = graph_service.get_repository_graph(db_session, repository_id=repo.id)
+    assert graph.repository_id == repo.id
+    assert graph.total_nodes > 0
+    assert graph.total_edges > 0
+    assert any(n.type == "FILE" for n in graph.nodes)
+    assert any(n.type == "SYMBOL" for n in graph.nodes)
+    assert any(e.relationship == "IMPORT" for e in graph.edges)
+    assert any(e.relationship == "CALL" for e in graph.edges)
+
+    # Lookup symbols
+    all_symbols = [s for f in version.files for s in f.symbols]
+    symbols_by_name = {s.name: s for s in all_symbols}
+
+    calc_tax_sym = symbols_by_name["calculate_tax"]
+    proc_inv_sym = symbols_by_name["process_invoice"]
+    exec_query_sym = symbols_by_name["execute_query"]
+    test_proc_sym = symbols_by_name["test_process"]
+    format_amt_sym = symbols_by_name["formatAmount"]
+
+    # 2. Callers can be retrieved for a real function
+    callers = graph_service.get_callers(db_session, symbol_id=calc_tax_sym.id)
+    caller_ids = [c.caller_symbol_id for c in callers]
+    assert proc_inv_sym.id in caller_ids
+
+    # 3. Callees can be retrieved for a real function
+    callees = graph_service.get_callees(db_session, symbol_id=proc_inv_sym.id)
+    callee_ids = [c.callee_symbol_id for c in callees]
+    assert calc_tax_sym.id in callee_ids
+
+    # 4. Dependencies can be retrieved for a real file
+    files_by_path = {f.path: f for f in version.files}
+    inv_file = files_by_path["app/invoice.py"]
+    tax_file = files_by_path["app/tax.py"]
+
+    file_deps = graph_service.get_file_dependencies(db_session, file_id=inv_file.id)
+    target_paths = [d.target_file_path for d in file_deps if d.target_file_path]
+    assert "app/tax.py" in target_paths
+
+    file_dependents = graph_service.get_file_dependents(db_session, file_id=tax_file.id)
+    source_paths = [d.source_file_path for d in file_dependents]
+    assert "app/invoice.py" in source_paths
+
+    # 5. Path can be found between two known connected functions
+    # process_invoice -> calculate_tax -> execute_query
+    paths_res = graph_service.find_paths(
+        db_session,
+        source_symbol_id=proc_inv_sym.id,
+        target_symbol_id=exec_query_sym.id,
+    )
+    assert paths_res.paths_count >= 1
+    found_path = paths_res.paths[0]
+    path_symbol_names = [step.name for step in found_path]
+    assert path_symbol_names == ["process_invoice", "calculate_tax", "execute_query"]
+
+    # 6. No path is reported between disconnected functions (Python test_process vs TS formatAmount)
+    disconnected_paths = graph_service.find_paths(
+        db_session,
+        source_symbol_id=test_proc_sym.id,
+        target_symbol_id=format_amt_sym.id,
+    )
+    assert disconnected_paths.paths_count == 0
+    assert disconnected_paths.paths == []

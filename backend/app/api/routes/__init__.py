@@ -1,3 +1,3 @@
-from app.api.routes import health, repositories, users
+from app.api.routes import files, health, repositories, symbols, users
 
-__all__ = ["health", "repositories", "users"]
+__all__ = ["files", "health", "repositories", "symbols", "users"]

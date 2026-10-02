@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.analysis_job import AnalysisJob
 from app.models.dependency import Dependency
@@ -58,8 +58,40 @@ class CodeIntelligenceRepository:
         return db.scalars(stmt).all()
 
     def get_file(self, db: Session, file_id: int) -> FileRecord | None:
-        stmt = select(FileRecord).where(FileRecord.id == file_id)
+        stmt = (
+            select(FileRecord)
+            .options(
+                selectinload(FileRecord.symbols),
+                selectinload(FileRecord.repository_version),
+            )
+            .where(FileRecord.id == file_id)
+        )
         return db.scalars(stmt).first()
+
+    def get_file_dependencies(self, db: Session, file_id: int) -> Sequence[Dependency]:
+        stmt = (
+            select(Dependency)
+            .options(selectinload(Dependency.target_file))
+            .where(
+                Dependency.relationship_type == "IMPORT",
+                Dependency.source_file_id == file_id,
+            )
+            .order_by(Dependency.line_number.asc().nulls_last(), Dependency.id.asc())
+        )
+        return db.scalars(stmt).all()
+
+    def get_file_dependents(self, db: Session, file_id: int) -> Sequence[Dependency]:
+        stmt = (
+            select(Dependency)
+            .options(selectinload(Dependency.source_file))
+            .where(
+                Dependency.relationship_type == "IMPORT",
+                Dependency.target_file_id == file_id,
+                Dependency.resolution_status == "RESOLVED",
+            )
+            .order_by(Dependency.id.asc())
+        )
+        return db.scalars(stmt).all()
 
     # 3. Symbols
     def list_symbols(
@@ -86,6 +118,87 @@ class CodeIntelligenceRepository:
             stmt = stmt.where(Symbol.symbol_type == symbol_type)
         stmt = stmt.order_by(Symbol.id.asc()).offset(skip).limit(limit)
         return db.scalars(stmt).all()
+
+    def get_symbol(self, db: Session, symbol_id: int) -> Symbol | None:
+        stmt = (
+            select(Symbol)
+            .options(
+                selectinload(Symbol.file).selectinload(FileRecord.repository_version),
+                selectinload(Symbol.parent_symbol),
+            )
+            .where(Symbol.id == symbol_id)
+        )
+        return db.scalars(stmt).first()
+
+    def get_symbol_callers(self, db: Session, symbol_id: int) -> Sequence[Dependency]:
+        stmt = (
+            select(Dependency)
+            .options(
+                selectinload(Dependency.caller_symbol).selectinload(Symbol.file),
+                selectinload(Dependency.source_file),
+            )
+            .where(
+                Dependency.relationship_type == "CALL",
+                Dependency.callee_symbol_id == symbol_id,
+                Dependency.resolution_status == "RESOLVED",
+            )
+            .order_by(Dependency.line_number.asc().nulls_last(), Dependency.id.asc())
+        )
+        return db.scalars(stmt).all()
+
+    def get_symbol_callees(self, db: Session, symbol_id: int) -> Sequence[Dependency]:
+        stmt = (
+            select(Dependency)
+            .options(
+                selectinload(Dependency.callee_symbol).selectinload(Symbol.file),
+                selectinload(Dependency.source_file),
+            )
+            .where(
+                Dependency.relationship_type == "CALL",
+                Dependency.caller_symbol_id == symbol_id,
+            )
+            .order_by(Dependency.line_number.asc().nulls_last(), Dependency.id.asc())
+        )
+        return db.scalars(stmt).all()
+
+    def get_symbol_dependencies(self, db: Session, symbol_id: int) -> Sequence[Dependency]:
+        stmt = (
+            select(Dependency)
+            .options(
+                selectinload(Dependency.callee_symbol).selectinload(Symbol.file),
+                selectinload(Dependency.source_file),
+            )
+            .where(Dependency.caller_symbol_id == symbol_id)
+            .order_by(Dependency.line_number.asc().nulls_last(), Dependency.id.asc())
+        )
+        return db.scalars(stmt).all()
+
+    def get_version_graph_entities(
+        self, db: Session, version_id: int
+    ) -> tuple[Sequence[FileRecord], Sequence[Symbol], Sequence[Dependency]]:
+        files_stmt = (
+            select(FileRecord)
+            .where(FileRecord.repository_version_id == version_id)
+            .order_by(FileRecord.path.asc())
+        )
+        files = db.scalars(files_stmt).all()
+
+        symbols_stmt = (
+            select(Symbol)
+            .join(FileRecord, Symbol.file_id == FileRecord.id)
+            .where(FileRecord.repository_version_id == version_id)
+            .order_by(Symbol.id.asc())
+        )
+        symbols = db.scalars(symbols_stmt).all()
+
+        deps_stmt = (
+            select(Dependency)
+            .where(Dependency.repository_version_id == version_id)
+            .order_by(Dependency.id.asc())
+        )
+        deps = db.scalars(deps_stmt).all()
+
+        return files, symbols, deps
 
     # 4. Dependencies
     def list_dependencies(

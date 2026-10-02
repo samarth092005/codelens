@@ -30,6 +30,10 @@ from app.services.code_intelligence.resolver import (
     DependencyResolver,
     dependency_resolver,
 )
+from app.services.code_intelligence.graph_service import (
+    GraphService,
+    graph_service,
+)
 
 __all__ = [
     "RepositoryService",
@@ -48,4 +52,6 @@ __all__ = [
     "git_service",
     "DependencyResolver",
     "dependency_resolver",
+    "GraphService",
+    "graph_service",
 ]

@@ -4,8 +4,10 @@ from app.core.database import get_db
 from app.schemas.code_intelligence import (
     AnalysisJobResponse,
     AnalysisTriggerRequest,
+    ArchitectureResponse,
     DependencyResponse,
     FileResponse,
+    GraphResponse,
     RepositoryVersionResponse,
     SymbolResponse,
 )
@@ -17,6 +19,10 @@ from app.schemas.repository import (
 from app.services.code_intelligence.analysis_service import (
     RepositoryAnalysisService,
     repository_analysis_service,
+)
+from app.services.code_intelligence.graph_service import (
+    GraphService,
+    graph_service,
 )
 from app.services.repository_service import (
     RepositoryService,
@@ -257,4 +263,42 @@ def get_dependencies(
         callee_name=callee_name,
         skip=skip,
         limit=limit,
+    )
+
+
+@router.get(
+    "/{repository_id}/graph",
+    response_model=GraphResponse,
+    summary="Get repository engineering graph",
+)
+def get_repository_graph(
+    repository_id: int,
+    version_id: int | None = Query(default=None, description="Repository version ID (defaults to latest)"),
+    db: Session = Depends(get_db),
+    graph_svc: GraphService = Depends(lambda: graph_service),
+):
+    """Retrieve deterministic node-and-edge engineering graph for a repository version."""
+    return graph_svc.get_repository_graph(
+        db,
+        repository_id=repository_id,
+        version_id=version_id,
+    )
+
+
+@router.get(
+    "/{repository_id}/architecture",
+    response_model=ArchitectureResponse,
+    summary="Get repository architectural structure",
+)
+def get_repository_architecture(
+    repository_id: int,
+    version_id: int | None = Query(default=None, description="Repository version ID (defaults to latest)"),
+    db: Session = Depends(get_db),
+    graph_svc: GraphService = Depends(lambda: graph_service),
+):
+    """Derive repository architectural modules and aggregated engineering facts."""
+    return graph_svc.get_architecture_data(
+        db,
+        repository_id=repository_id,
+        version_id=version_id,
     )
