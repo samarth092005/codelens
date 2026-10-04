@@ -33,6 +33,15 @@ from app.schemas.code_intelligence import (
     ApiImpactItem,
     DatabaseImpactItem,
     ImpactAnalysisResponse,
+    CommitSummaryResponse,
+    CommitSymbolChangeItem,
+    CommitFileChangeItem,
+    CommitDetailResponse,
+    FileHistoryItem,
+    FileHistoryResponse,
+    SymbolHistoryItem,
+    SymbolHistoryResponse,
+    CommitImpactResponse,
 )
 
 __all__ = [
@@ -71,4 +80,13 @@ __all__ = [
     "ApiImpactItem",
     "DatabaseImpactItem",
     "ImpactAnalysisResponse",
+    "CommitSummaryResponse",
+    "CommitSymbolChangeItem",
+    "CommitFileChangeItem",
+    "CommitDetailResponse",
+    "FileHistoryItem",
+    "FileHistoryResponse",
+    "SymbolHistoryItem",
+    "SymbolHistoryResponse",
+    "CommitImpactResponse",
 ]

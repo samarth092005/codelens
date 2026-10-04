@@ -7,6 +7,7 @@ from app.models.base import Base
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.repository_version import RepositoryVersion
+    from app.models.git_commit import GitCommit
 
 
 class Repository(Base):
@@ -42,4 +43,10 @@ class Repository(Base):
         "RepositoryVersion",
         back_populates="repository",
         cascade="all, delete-orphan",
+    )
+    commits: Mapped[list["GitCommit"]] = relationship(
+        "GitCommit",
+        back_populates="repository",
+        cascade="all, delete-orphan",
+        order_by="GitCommit.committed_at.desc()",
     )

@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,10 +9,13 @@ from app.models.file_record import FileRecord
 from app.models.repository import Repository
 from app.models.repository_version import RepositoryVersion
 from app.models.symbol import Symbol
+from app.services.code_intelligence.evolution_service import GitEvolutionService, git_evolution_service
 from app.services.code_intelligence.file_discovery import FileDiscoveryService, file_discovery_service
 from app.services.code_intelligence.git_service import GitRepositoryError, GitService, git_service
 from app.services.code_intelligence.parser import CompositeCodeParser, composite_parser
 from app.services.code_intelligence.resolver import DependencyResolver, dependency_resolver
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -35,11 +39,13 @@ class RepositoryIngestionService:
         discovery_svc: FileDiscoveryService = file_discovery_service,
         parser_svc: CompositeCodeParser = composite_parser,
         resolver_svc: DependencyResolver = dependency_resolver,
+        evolution_svc: GitEvolutionService = git_evolution_service,
     ) -> None:
         self.git_svc = git_svc
         self.discovery_svc = discovery_svc
         self.parser_svc = parser_svc
         self.resolver_svc = resolver_svc
+        self.evolution_svc = evolution_svc
 
     def validate_and_resolve_path(self, repo_url_or_path: str) -> Path:
         """Validate and resolve a repository path safely.
@@ -245,6 +251,19 @@ class RepositoryIngestionService:
         repository.status = "analyzed"
         db.commit()
         db.refresh(version)
+
+        # 9. Extract & Persist Git Commit History & Evolution
+        try:
+            self.evolution_svc.ingest_git_history(
+                db=db,
+                repository=repository,
+                repo_path=str(repo_path),
+                current_version=version,
+            )
+        except Exception as ex:
+            logger.warning(
+                "Failed to ingest git history for repository %s: %s", repository.id, ex
+            )
 
         total_dependencies = len(resolved_imports) + len(resolved_calls)
 

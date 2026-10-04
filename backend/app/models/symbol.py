@@ -6,6 +6,7 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.file_record import FileRecord
+    from app.models.commit_symbol_change import CommitSymbolChange
 
 
 class Symbol(Base):
@@ -41,4 +42,8 @@ class Symbol(Base):
         "Symbol",
         remote_side=[id],
         backref="children",
+    )
+    commit_changes: Mapped[list["CommitSymbolChange"]] = relationship(
+        "CommitSymbolChange",
+        back_populates="symbol",
     )

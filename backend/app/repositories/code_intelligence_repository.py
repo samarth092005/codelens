@@ -1,11 +1,14 @@
 from collections.abc import Sequence
 from datetime import datetime, timezone
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.analysis_job import AnalysisJob
+from app.models.commit_file_change import CommitFileChange
+from app.models.commit_symbol_change import CommitSymbolChange
 from app.models.dependency import Dependency
 from app.models.file_record import FileRecord
+from app.models.git_commit import GitCommit
 from app.models.repository_version import RepositoryVersion
 from app.models.symbol import Symbol
 
@@ -287,6 +290,125 @@ class CodeIntelligenceRepository:
         db.commit()
         db.refresh(job)
         return job
+
+    # 6. Git Evolution & Commits
+    def list_commits(
+        self, db: Session, repository_id: int, *, skip: int = 0, limit: int = 100
+    ) -> Sequence[GitCommit]:
+        stmt = (
+            select(GitCommit)
+            .where(GitCommit.repository_id == repository_id)
+            .order_by(GitCommit.committed_at.desc(), GitCommit.id.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        return db.scalars(stmt).all()
+
+    def get_commit_by_hash(
+        self, db: Session, repository_id: int, commit_hash: str
+    ) -> GitCommit | None:
+        stmt = (
+            select(GitCommit)
+            .options(
+                selectinload(GitCommit.changed_files).selectinload(
+                    CommitFileChange.changed_symbols
+                )
+            )
+            .where(
+                GitCommit.repository_id == repository_id,
+                GitCommit.commit_hash.like(f"{commit_hash}%"),
+            )
+            .order_by(GitCommit.id.desc())
+        )
+        return db.scalars(stmt).first()
+
+    def get_commit_file_changes(
+        self, db: Session, commit_id: int
+    ) -> Sequence[CommitFileChange]:
+        stmt = (
+            select(CommitFileChange)
+            .where(CommitFileChange.commit_id == commit_id)
+            .order_by(CommitFileChange.id.asc())
+        )
+        return db.scalars(stmt).all()
+
+    def get_commit_symbol_changes(
+        self, db: Session, commit_id: int
+    ) -> Sequence[CommitSymbolChange]:
+        stmt = (
+            select(CommitSymbolChange)
+            .join(CommitFileChange, CommitSymbolChange.file_change_id == CommitFileChange.id)
+            .where(CommitFileChange.commit_id == commit_id)
+            .order_by(CommitSymbolChange.id.asc())
+        )
+        return db.scalars(stmt).all()
+
+    def get_file_commit_changes(
+        self, db: Session, repository_id: int, file_path: str, file_id: int | None = None
+    ) -> Sequence[CommitFileChange]:
+        stmt = (
+            select(CommitFileChange)
+            .join(GitCommit, CommitFileChange.commit_id == GitCommit.id)
+            .options(
+                selectinload(CommitFileChange.commit),
+                selectinload(CommitFileChange.changed_symbols),
+            )
+            .where(
+                GitCommit.repository_id == repository_id,
+                (
+                    (CommitFileChange.file_path == file_path)
+                    | (CommitFileChange.old_path == file_path)
+                    | (CommitFileChange.file_id == file_id if file_id else False)
+                ),
+            )
+            .order_by(GitCommit.committed_at.desc(), GitCommit.id.desc())
+        )
+        return db.scalars(stmt).all()
+
+    def get_symbol_commit_changes(
+        self,
+        db: Session,
+        repository_id: int,
+        symbol_name: str,
+        qualified_name: str | None,
+        file_path: str,
+        symbol_id: int | None = None,
+    ) -> Sequence[CommitSymbolChange]:
+        file_match = or_(
+            CommitFileChange.file_path == file_path,
+            CommitFileChange.old_path == file_path,
+        )
+        if qualified_name:
+            sym_match = or_(
+                CommitSymbolChange.qualified_name == qualified_name,
+                CommitSymbolChange.symbol_name == symbol_name,
+            )
+        else:
+            sym_match = CommitSymbolChange.symbol_name == symbol_name
+
+        name_in_file = and_(file_match, sym_match)
+        if symbol_id is not None:
+            match_cond = or_(CommitSymbolChange.symbol_id == symbol_id, name_in_file)
+        else:
+            match_cond = name_in_file
+
+        stmt = (
+            select(CommitSymbolChange)
+            .join(CommitFileChange, CommitSymbolChange.file_change_id == CommitFileChange.id)
+            .join(GitCommit, CommitFileChange.commit_id == GitCommit.id)
+            .options(
+                selectinload(CommitSymbolChange.file_change).selectinload(
+                    CommitFileChange.commit
+                )
+            )
+            .where(
+                GitCommit.repository_id == repository_id,
+                match_cond,
+            )
+            .order_by(GitCommit.committed_at.desc(), GitCommit.id.desc())
+        )
+        return db.scalars(stmt).all()
+
 
 
 code_intel_repository = CodeIntelligenceRepository()

@@ -3,6 +3,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.models.repository import Repository
+from app.services.code_intelligence.evolution_service import git_evolution_service
 from app.services.code_intelligence.ingestion_service import repository_ingestion_service
 
 
@@ -305,3 +306,130 @@ def test_real_sample_repository_change_impact_intelligence(db_session: Session, 
     # 5. Disconnected components (TypeScript payment utils) never affected
     assert "formatAmount" not in aff_by_name
     assert "processPayment" not in aff_by_name
+
+
+def test_real_sample_repository_evolution_intelligence(db_session: Session, tmp_path: Path):
+    """Real deterministic Git & code evolution validation matching Sprint 5 specification.
+    
+    Commit 1: Create base sample project with app/, src/, and tests/
+    Commit 2: Modify calculate_tax in app/tax.py
+    Verify:
+    1. Commits list and ordering
+    2. Commit 2 file diff shows app/tax.py modified
+    3. Commit 2 symbol diff shows calculate_tax modified
+    4. Commit impact for Commit 2 deterministically identifies callers (InvoiceService.process_invoice)
+    5. Disconnected files (TypeScript) are unaffected
+    """
+    repo_root = tmp_path / "sample_repo_evolution"
+    app_dir = repo_root / "app"
+    src_dir = repo_root / "src"
+    tests_dir = repo_root / "tests"
+
+    app_dir.mkdir(parents=True)
+    src_dir.mkdir(parents=True)
+    tests_dir.mkdir(parents=True)
+
+    # 1. database.py
+    (app_dir / "database.py").write_text(
+        'def execute_query(sql_statement):\n    return [{"id": 1, "rate": 0.05}]\n',
+        encoding="utf-8",
+    )
+
+    # 2. tax.py
+    (app_dir / "tax.py").write_text(
+        'from app.database import execute_query\n\ndef calculate_tax(amount):\n    rates = execute_query("SELECT rate FROM tax_rates")\n    rate = rates[0]["rate"]\n    return amount * rate\n',
+        encoding="utf-8",
+    )
+
+    # 3. invoice.py
+    (app_dir / "invoice.py").write_text(
+        'from app.tax import calculate_tax\n\nclass InvoiceService:\n    def process_invoice(self, amount):\n        tax = calculate_tax(amount)\n        return amount + tax\n',
+        encoding="utf-8",
+    )
+
+    # 4. test_invoice.py
+    (tests_dir / "test_invoice.py").write_text(
+        'from app.invoice import InvoiceService\n\ndef test_process():\n    service = InvoiceService()\n    return service.process_invoice(100)\n',
+        encoding="utf-8",
+    )
+
+    # 5. TypeScript
+    (src_dir / "utils.ts").write_text(
+        'export function formatAmount(val: number): string {\n    return "$" + val.toFixed(2);\n}\n',
+        encoding="utf-8",
+    )
+
+    # Git init and Commit 1
+    subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_root), check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "eval@codelens.io"], cwd=str(repo_root), check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "CodeLens Evaluation"], cwd=str(repo_root), check=True, capture_output=True)
+    subprocess.run(["git", "add", "."], cwd=str(repo_root), check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Commit 1: Base repository"], cwd=str(repo_root), check=True, capture_output=True)
+    c1 = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(repo_root), check=True, capture_output=True, text=True).stdout.strip()
+
+    # Commit 2: Modify calculate_tax in app/tax.py
+    (app_dir / "tax.py").write_text(
+        'from app.database import execute_query\n\ndef calculate_tax(amount):\n    # Enhanced tax calculation with surcharge\n    rates = execute_query("SELECT rate FROM tax_rates")\n    rate = rates[0]["rate"]\n    return amount * rate * 1.05\n',
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "."], cwd=str(repo_root), check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Commit 2: Update calculate_tax algorithm"], cwd=str(repo_root), check=True, capture_output=True)
+    c2 = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(repo_root), check=True, capture_output=True, text=True).stdout.strip()
+
+    # Create CodeLens repository and ingest
+    repo = Repository(
+        name="sample-project-evolution",
+        url=str(repo_root),
+        default_branch="main",
+        status="pending",
+    )
+    db_session.add(repo)
+    db_session.commit()
+    db_session.refresh(repo)
+
+    result = repository_ingestion_service.ingest_repository(db=db_session, repository=repo)
+
+    # 1. Verify commits list
+    commits = git_evolution_service.list_commits(db_session, repository_id=repo.id)
+    assert len(commits) == 2
+    assert commits[0].commit_hash == c2
+    assert commits[1].commit_hash == c1
+
+    # 2. Verify Commit 2 details
+    c2_detail = git_evolution_service.get_commit_details(db_session, repository_id=repo.id, commit_hash=c2)
+    assert c2_detail.commit_hash == c2
+    assert len(c2_detail.files) == 1
+    assert c2_detail.files[0].file_path == "app/tax.py"
+    assert c2_detail.files[0].change_type in ("M", "MODIFIED")
+
+    c2_sym_changes = {sc.symbol_name: sc.change_type for sc in c2_detail.symbols}
+    assert "calculate_tax" in c2_sym_changes
+    assert c2_sym_changes["calculate_tax"] == "MODIFIED"
+
+    # 3. Verify Commit 2 impact
+    c2_impact = git_evolution_service.analyze_commit_impact(db_session, repository_id=repo.id, commit_hash=c2)
+    assert c2_impact.commit_hash == c2
+    assert c2_impact.changed_symbols_count >= 1
+
+    changed_names = [sc.symbol_name for sc in c2_impact.changed_symbols]
+    assert "calculate_tax" in changed_names
+
+    affected_names = [s.name for s in c2_impact.affected_symbols]
+    assert "process_invoice" in affected_names
+
+    affected_files = [f.path for f in c2_impact.affected_files]
+    assert "app/invoice.py" in affected_files
+    assert "src/utils.ts" not in affected_files
+
+    # 4. Verify file history of tax.py
+    tax_file = next(f for f in repo.versions[-1].files if f.path == "app/tax.py")
+    tax_hist = git_evolution_service.get_file_history(db_session, file_id=tax_file.id)
+    assert tax_hist.total_commits == 2
+
+    # 5. Verify symbol history of calculate_tax
+    tax_sym = next(s for s in tax_file.symbols if s.name == "calculate_tax")
+    tax_sym_hist = git_evolution_service.get_symbol_history(db_session, symbol_id=tax_sym.id)
+    assert tax_sym_hist.total_commits == 2
+    assert tax_sym_hist.history[0].change_type == "MODIFIED"
+    assert tax_sym_hist.history[1].change_type == "ADDED"
+

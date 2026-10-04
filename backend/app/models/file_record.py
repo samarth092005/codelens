@@ -7,6 +7,7 @@ from app.models.base import Base
 if TYPE_CHECKING:
     from app.models.repository_version import RepositoryVersion
     from app.models.symbol import Symbol
+    from app.models.commit_file_change import CommitFileChange
 
 
 class FileRecord(Base):
@@ -41,4 +42,8 @@ class FileRecord(Base):
         "Symbol",
         back_populates="file",
         cascade="all, delete-orphan",
+    )
+    commit_changes: Mapped[list["CommitFileChange"]] = relationship(
+        "CommitFileChange",
+        back_populates="file",
     )

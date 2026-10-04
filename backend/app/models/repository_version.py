@@ -46,3 +46,8 @@ class RepositoryVersion(Base):
         "AnalysisJob",
         back_populates="repository_version",
     )
+
+    @property
+    def commit_hash(self) -> str:
+        return self.commit_sha
+

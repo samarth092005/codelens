@@ -6,6 +6,11 @@ from app.schemas.code_intelligence import (
     FileDependencyItem,
     FileDependentItem,
     FileDetailResponse,
+    FileHistoryResponse,
+)
+from app.services.code_intelligence.evolution_service import (
+    GitEvolutionService,
+    git_evolution_service,
 )
 from app.services.code_intelligence.graph_service import (
     GraphService,
@@ -55,3 +60,18 @@ def get_file_dependents(
 ):
     """Retrieve all files in the repository that depend on / import this file."""
     return service.get_file_dependents(db, file_id=file_id)
+
+
+@router.get(
+    "/{file_id}/history",
+    response_model=FileHistoryResponse,
+    summary="Get file commit history",
+)
+def get_file_history(
+    file_id: int,
+    db: Session = Depends(get_db),
+    evolution_svc: GitEvolutionService = Depends(lambda: git_evolution_service),
+):
+    """Retrieve commit evolution history and symbol changes for a file."""
+    return evolution_svc.get_file_history(db, file_id=file_id)
+

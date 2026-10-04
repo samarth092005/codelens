@@ -8,7 +8,12 @@ from app.schemas.code_intelligence import (
     ImpactAnalysisResponse,
     SymbolDependencyItem,
     SymbolDetailResponse,
+    SymbolHistoryResponse,
     SymbolPathsResponse,
+)
+from app.services.code_intelligence.evolution_service import (
+    GitEvolutionService,
+    git_evolution_service,
 )
 from app.services.code_intelligence.graph_service import (
     GraphService,
@@ -123,3 +128,18 @@ def get_symbol_impact(
         symbol_id=symbol_id,
         max_depth=max_depth,
     )
+
+
+@router.get(
+    "/{symbol_id}/history",
+    response_model=SymbolHistoryResponse,
+    summary="Get symbol evolution history",
+)
+def get_symbol_history(
+    symbol_id: int,
+    db: Session = Depends(get_db),
+    evolution_svc: GitEvolutionService = Depends(lambda: git_evolution_service),
+):
+    """Retrieve commit evolution history and change timeline for a symbol."""
+    return evolution_svc.get_symbol_history(db, symbol_id=symbol_id)
+

@@ -5,6 +5,9 @@ from app.schemas.code_intelligence import (
     AnalysisJobResponse,
     AnalysisTriggerRequest,
     ArchitectureResponse,
+    CommitDetailResponse,
+    CommitImpactResponse,
+    CommitSummaryResponse,
     DependencyResponse,
     FileResponse,
     GraphResponse,
@@ -19,6 +22,10 @@ from app.schemas.repository import (
 from app.services.code_intelligence.analysis_service import (
     RepositoryAnalysisService,
     repository_analysis_service,
+)
+from app.services.code_intelligence.evolution_service import (
+    GitEvolutionService,
+    git_evolution_service,
 )
 from app.services.code_intelligence.graph_service import (
     GraphService,
@@ -302,3 +309,54 @@ def get_repository_architecture(
         repository_id=repository_id,
         version_id=version_id,
     )
+
+
+@router.get(
+    "/{repository_id}/commits",
+    response_model=list[CommitSummaryResponse],
+    summary="List repository commits",
+)
+def list_repository_commits(
+    repository_id: int,
+    skip: int = Query(default=0, ge=0, description="Offset for pagination"),
+    limit: int = Query(default=100, ge=1, le=500, description="Page size limit"),
+    db: Session = Depends(get_db),
+    evolution_svc: GitEvolutionService = Depends(lambda: git_evolution_service),
+):
+    """Retrieve chronological Git commit history for a repository."""
+    return evolution_svc.list_commits(db, repository_id=repository_id, skip=skip, limit=limit)
+
+
+@router.get(
+    "/{repository_id}/commits/{commit_hash}",
+    response_model=CommitDetailResponse,
+    summary="Get commit details",
+)
+def get_commit_details(
+    repository_id: int,
+    commit_hash: str,
+    db: Session = Depends(get_db),
+    evolution_svc: GitEvolutionService = Depends(lambda: git_evolution_service),
+):
+    """Retrieve detailed commit metadata, changed files, and changed symbols."""
+    return evolution_svc.get_commit_details(
+        db, repository_id=repository_id, commit_hash=commit_hash
+    )
+
+
+@router.get(
+    "/{repository_id}/commits/{commit_hash}/impact",
+    response_model=CommitImpactResponse,
+    summary="Analyze commit impact",
+)
+def analyze_commit_impact(
+    repository_id: int,
+    commit_hash: str,
+    db: Session = Depends(get_db),
+    evolution_svc: GitEvolutionService = Depends(lambda: git_evolution_service),
+):
+    """Deterministically analyze callers and files potentially affected by changes in a commit."""
+    return evolution_svc.analyze_commit_impact(
+        db, repository_id=repository_id, commit_hash=commit_hash
+    )
+
